@@ -1,0 +1,73 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+const char* ssid = "madhu";
+const char* password = "madhu0101";
+
+// 🔴 Replace with your PythonAnywhere URL
+const char* serverName = "http://iotsmarthealth.pythonanywhere.com/update";
+
+int pulsePin = 34;   // Pulse sensor signal pin
+int threshold = 550; // Adjust after testing
+
+int bpm = 0;
+long lastBeat = 0;
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n✅ Connected to WiFi");
+}
+
+void loop() {
+
+  int signal = analogRead(pulsePin);
+  Serial.println(signal); // Raw value (for calibration)
+
+  // Detect heartbeat
+  if (signal > threshold) {
+    long currentTime = millis();
+
+    if (currentTime - lastBeat > 500) {  // avoid double count
+      bpm = 60000 / (currentTime - lastBeat);
+      lastBeat = currentTime;
+
+      // Stress calculation
+      String stress;
+      if (bpm < 40) stress = "Low";
+      else if (bpm <80) stress = "Normal";
+      else stress = "High";
+
+      Serial.println("💓 BPM: " + String(bpm));
+      Serial.println("😟 Stress: " + stress);
+
+      // Send data to PythonAnywhere
+      if (WiFi.status() == WL_CONNECTED) {
+        HTTPClient http;
+
+        http.begin(serverName);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("User-Agent", "ESP32");  // IMPORTANT for PythonAnywhere
+
+        String jsonData = "{\"pulse\":" + String(bpm) + ",\"stress\":\"" + stress + "\"}";
+
+        int httpResponseCode = http.POST(jsonData);
+
+        Serial.print("🌐 Server Response: ");
+        Serial.println(httpResponseCode);
+
+        http.end();
+      }
+    }
+  }
+
+  delay(20);
+}
